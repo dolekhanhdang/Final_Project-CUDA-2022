@@ -264,8 +264,8 @@ __global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     int r = blockDim.y * blockIdx.y + threadIdx.y;
     if(r < height && c < width){
-        // int i = r * width + c;
-        uint8_t outPixel = 0;
+        uint8_t outPixel_x = 0;
+        uint8_t outPixel_y = 0;
  
         for (int filterR = 0; filterR < filterWidth; filterR++)
         {
@@ -280,11 +280,11 @@ __global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
                 inPixelsC = min(max(0, inPixelsC), width - 1);
                 uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
 
-                outPixel += abs(filterVal_x * inPixel);
-                outPixel += abs(filterVal_y * inPixel);
+		outPixel_x += filterVal_x * inPixel;
+                outPixel_y += filterVal_y * inPixel;
             }
         }
-        outPixels[r * width + c] = outPixel;
+        outPixels[r * width + c] = abs(outPixel_x) + abs(outPixel_y);
     }
 }
 
