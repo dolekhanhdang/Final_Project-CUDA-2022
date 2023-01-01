@@ -256,7 +256,8 @@ void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel,
     {
         for (int outPixelsC = 0; outPixelsC < width; outPixelsC++)
         {
-            uint8_t outPixel = 0;
+            uint8_t outPixel_x = 0;
+            uint8_t outPixel_y = 0;
             for (int filterR = 0; filterR < filterWidth; filterR++)
             {
                 for (int filterC = 0; filterC < filterWidth; filterC++)
@@ -269,11 +270,11 @@ void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel,
                     inPixelsC = min(max(0, inPixelsC), width - 1);
                     uchar3 inPixel = inPixels[inPixelsR * width + inPixelsC];
                     uint8_t grayFilter = 0.299f * inPixel.x + 0.587f * inPixel.y + 0.114f * inPixel.z;
-                    outPixel += abs(filterVal_x * grayFilter) + abs(filterVal_y* grayFilter);
-
+                    outPixel_x += filterVal_x * grayFilter;
+                    outPixel_y += filterVal_y * grayFilter;
                 }
             }
-            outPixels[outPixelsR * width + outPixelsC] = outPixel;
+            outPixels[outPixelsR * width + outPixelsC] = abs(outPixel_x) + abs(outPixel_y);
         }
     }
 }
