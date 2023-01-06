@@ -67,7 +67,7 @@ void readPnm(char* fileName, int& width, int& height, uchar3*& pixels)
     char type[3];
     fscanf(f, "%s", type);
 
-    if (strcmp(type, "P3") != 0) // In this exercise, we don't touch other types
+    if (strcmp(type, "P3") != 0) 
     {
         fclose(f);
         printf("Cannot read %s\n", fileName);
@@ -79,7 +79,7 @@ void readPnm(char* fileName, int& width, int& height, uchar3*& pixels)
 
     int max_val;
     fscanf(f, "%i", &max_val);
-    if (max_val > 255) // In this exercise, we assume 1 byte per value
+    if (max_val > 255) // We assume 1 byte per value
     {
         fclose(f);
         printf("Cannot read %s\n", fileName);
@@ -179,7 +179,7 @@ __global__ void convertRgb2GrayKernel(uchar3 * inPixels, int width, int height, 
 
 __global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
     int* filter_x_Sobel, int* filter_y_Sobel, int filterWidth,
-    uint8_t * outPixels){
+    int * outPixels){
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     int r = blockDim.y * blockIdx.y + threadIdx.y;
     if(r < height && c < width){
@@ -208,30 +208,30 @@ __global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
     }
 }
 
-__global__ void calImportantMatKernel(uint8_t * inPixels, int width, int inHeight, int * traceBack, uint8_t * outPixels){
+__global__ void calImportantMatKernel(int * inPixels, int width, int inHeight, int * traceBack, int * outPixels){
     int c = blockDim.x * blockIdx.x + threadIdx.x;
-    int r = blockDim.y * blockIdx.y + threadIdx.y;
+    // int r = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if(c < width && r == inHeight){
-        int minIdx = (r + 1) * width + c;
-        int minValue = inPixels[minIdx];
+    if(c < width){
+        int minIdx = (inHeight + 1) * width + c;
+        int minValue = outPixels[minIdx];
 
         if(c > 0){
-            if(minValue > inPixels[minIdx - 1]){
-                minValue = inPixels[minIdx - 1];
+            if(minValue > outPixels[minIdx - 1]){
+                minValue = outPixels[minIdx - 1];
                 minIdx -= 1;
             }
         }
 
         if(c < width - 1){
-            if(minValue > inPixels[(r + 1) * width + c + 1]){
-                minValue = inPixels[(r + 1) * width + c + 1];
-                minIdx = (r + 1) * width + c + 1;
+            if(minValue > outPixels[(inHeight + 1) * width + c + 1]){
+                minValue = outPixels[(inHeight + 1) * width + c + 1];
+                minIdx = (inHeight + 1) * width + c + 1;
             }
         }
         
-        outPixels[r * width + c] = minValue;
-        traceBack[r * width + c] = minIdx;
+        outPixels[inHeight * width + c] = minValue + inPixels[inHeight * width + c];
+        traceBack[inHeight * width + c] = minIdx;
     }
 }
 
@@ -291,13 +291,14 @@ void convertRGB2GreyByDevice(uchar3 * inPixels, int width, int height, uint8_t *
     CHECK(cudaFree(d_outPixels));
 }
 
-void convolutionByDevice(uint8_t * inPixels, int width, int height, uint8_t * outPixels, dim3 blockSize=dim3(1)){
+void convolutionByDevice(uint8_t * inPixels, int width, int height, int * outPixels, dim3 blockSize=dim3(1)){
 
     // allocate device memory
-    uint8_t * d_inPixels, * d_outPixels;
+    uint8_t * d_inPixels;
+    int * d_outPixels;
 
     CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(uint8_t)));
-    CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(uint8_t)));
+    CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(int)));
 
     CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(uint8_t),cudaMemcpyHostToDevice));
 
@@ -342,7 +343,7 @@ void convolutionByDevice(uint8_t * inPixels, int width, int height, uint8_t * ou
     float time = timer.Elapsed();
     // printf("Convolution processing time (use device): %f ms\n\n",time);
 
-    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(uint8_t),cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(int),cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_outPixels));
@@ -350,21 +351,20 @@ void convolutionByDevice(uint8_t * inPixels, int width, int height, uint8_t * ou
     CHECK(cudaFree(d_filter_y_Sobel));
 }
 
-void calImportantMatByDevice(uint8_t * inPixels, int width, int height, int * traceBack, uint8_t * outPixels,dim3 blockSize=dim3(1)){
+void calImportantMatByDevice(int * inPixels, int width, int height, int * traceBack, int * outPixels,int blockSize=32){
      // allocate device memory
-    uint8_t * d_inPixels, * d_outPixels;
+    int * d_inPixels, * d_outPixels;
     int * d_traceBack;
 
-    CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(uint8_t)));
-    CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(uint8_t)));
+    CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(int)));
+    CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(int)));
     CHECK(cudaMalloc(&d_traceBack, (height-1) * width * sizeof(int)));
 
-    CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(uint8_t),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(int),cudaMemcpyHostToDevice));
     // copy the last line of inPixels (host) to d_outPixels (device)
-    CHECK(cudaMemcpy(d_outPixels + (height - 1) * width, inPixels + (height - 1) * width,width * sizeof(uint8_t),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_outPixels + (height - 1) * width, inPixels + (height - 1) * width,width * sizeof(int),cudaMemcpyHostToDevice));
 
-    dim3 gridSize((width - 1) / blockSize.x + 1,
-        (height - 1) / blockSize.y + 1);
+    int gridSize = (width - 1) / blockSize + 1;
 
     // calImportantMat kernel
     GpuTimer timer;
@@ -385,7 +385,7 @@ void calImportantMatByDevice(uint8_t * inPixels, int width, int height, int * tr
     float time = timer.Elapsed();
     // printf("Calculating cummulative matrix processing time (use device): %f ms\n\n",time);
     
-    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(uint8_t),cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(int),cudaMemcpyDeviceToHost));
     CHECK(cudaMemcpy(traceBack,d_traceBack, (height - 1)*width*sizeof(int), cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
@@ -393,7 +393,7 @@ void calImportantMatByDevice(uint8_t * inPixels, int width, int height, int * tr
     CHECK(cudaFree(d_traceBack));
 }
 
-void findSeam(uint8_t * cumEnergy, int width, int height, int * traceBack, int * seam){
+void findSeam(int * cumEnergy, int width, int height, int * traceBack, int * seam){
     int minValue = cumEnergy[0];
     int minIdx = 0;
 
@@ -479,8 +479,8 @@ void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, in
 void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove, dim3 blockSize=dim3(1)){
 
     uint8_t * inGreyPixels = (uint8_t*)malloc(height * width * sizeof(uint8_t));
-    uint8_t * outPixels = (uint8_t*)malloc(height * width * sizeof(uint8_t)); // energy pixel matrix
-    uint8_t * cummulativeEnergy2Bottom = (uint8_t *)malloc(height * width * sizeof(uint8_t));
+    int * outPixels = (int*)malloc(height * width * sizeof(int)); // energy pixel matrix
+    int * cummulativeEnergy2Bottom = (int *)malloc(height * width * sizeof(int));
     int * traceBack = (int*)malloc((height - 1) * width * sizeof(int));
     int * seam = (int *)malloc(height * sizeof(int));
 
@@ -495,7 +495,7 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove
 
     for(int i = 0; i < numRemove; i++){
         convolutionByDevice(inGreyPixels,width,height,outPixels,blockSize);
-        calImportantMatByDevice(outPixels,width,height,traceBack,cummulativeEnergy2Bottom,blockSize);
+        calImportantMatByDevice(outPixels,width,height,traceBack,cummulativeEnergy2Bottom,blockSize.x);
         findSeam(cummulativeEnergy2Bottom,width,height,traceBack,seam);
 
         // visualizeSeam(inPixels,width,height,seam);
@@ -516,11 +516,11 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove
         newInGreyPixels = temp1;
 
         free(outPixels);
-        outPixels = (uint8_t*)malloc(height * width * sizeof(uint8_t)); // energy pixel matrix
+        outPixels = (int*)malloc(height * width * sizeof(int)); // energy pixel matrix
         free(traceBack);
         traceBack = (int*)malloc((height - 1) * width * sizeof(int));
         free(cummulativeEnergy2Bottom);
-        cummulativeEnergy2Bottom = (uint8_t *)malloc(height * width * sizeof(uint8_t));
+        cummulativeEnergy2Bottom = (int *)malloc(height * width * sizeof(int));
         free(newInPixels);
         free(newInGreyPixels);
     }
@@ -571,7 +571,9 @@ int main(int argc, char ** argv)
 		blockSize.y = atoi(argv[4]);
 	}
 
-    seamCarvingByDevice(inPixels,width,height,500, blockSize);
+    int numRemove = 500;
+    numRemove = atoi(argv[2]);
+    seamCarvingByDevice(inPixels,width,height,numRemove, blockSize);
 
     free(inPixels);
 }
