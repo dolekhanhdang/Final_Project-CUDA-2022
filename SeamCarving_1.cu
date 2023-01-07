@@ -144,6 +144,7 @@ char* concatStr(const char* s1, const char* s2)
     strcat(result, s2);
     return result;
 }
+// P
 
 float computeError(uchar3* a1, uchar3* a2, int n)
 {
@@ -175,15 +176,15 @@ void printError(int* deviceResult, int* hostResult, int width, int height)
 
 
 // Sequence functions
-void convolution(uchar3* inPixels, int width, int height, int* filter_x_Sobel, int* filter_y_Sobel, int filterWidth, int* outPixels)
+void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
     //printf("    Convolution begin \n");
     for (int outPixelsR = 0; outPixelsR < height; outPixelsR++)
     {
         for (int outPixelsC = 0; outPixelsC < width; outPixelsC++)
         {
-            uint8_t outPixel_x = 0;
-            uint8_t outPixel_y = 0;
+            int outPixel_x = 0;
+            int outPixel_y = 0;
             for (int filterR = 0; filterR < filterWidth; filterR++)
             {
                 for (int filterC = 0; filterC < filterWidth; filterC++)
@@ -306,8 +307,8 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
         uchar3* newPixels = (uchar3*)malloc((new_width -1) * height * sizeof(uchar3));
         // Define filter
         int filterWidth = 3;
-        int filter_x_Sobel[] = { 1 , 0 , -1, 2 , 0 , -2,  1 ,  0 , -1 };
-        int filter_y_Sobel[] = { 1 , 2 , 1 , 0 , 0 , 0 , -1 , -2 , -1 };
+        float filter_x_Sobel[] = { 1 , 0 , -1, 2 , 0 , -2,  1 ,  0 , -1 };
+        float filter_y_Sobel[] = { 1 , 2 , 1 , 0 , 0 , 0 , -1 , -2 , -1 };
         // Gray filter and convolution ( calculate Importance matrix )
         int* gray   = (int*)malloc(new_width * height * sizeof(int));
         convolution       (inPixels , new_width, height, filter_x_Sobel, filter_y_Sobel, filterWidth, gray);
@@ -359,18 +360,19 @@ int main(int argc, char ** argv)
     }
 
     printDeviceInfo();
-    dim3 blockSize(32, 32);
+
     // Read input image file
     int width, height;
     uchar3* inPixels;
     readPnm(argv[1], width, height, inPixels);
     printf("\nImage size (width x height): %i x %i\n", width, height);
+    dim3 blockSize(32, 32); // Default
     if (argc == 5)
     {
         blockSize.x = atoi(argv[4]);
         blockSize.y = atoi(argv[5]);
     }
-    
+
     uchar3* outPixels = NULL;
     GpuTimer timer;
     timer.Start();
