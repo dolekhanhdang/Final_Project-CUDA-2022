@@ -185,8 +185,8 @@ __global__ void convolutionKernel(uint8_t* inPixels, int width, int height,
     int r = blockDim.y * blockIdx.y + threadIdx.y;
     if (r < height && c < width) {
         // int i = r * width + c;
-        uint8_t outPixel_x = 0;
-        uint8_t outPixel_y = 0;
+        int outPixel_x = 0;
+        int outPixel_y = 0;
 
         for (int filterR = 0; filterR < filterWidth; filterR++)
         {
