@@ -492,12 +492,10 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
 
         // SeamCal kennel
         //printf("SeamCal \n");
-        dim3 gridSize_1((new_width - 1) /blockSize.x + 1, (height - 1) / blockSize.y + 1);
-        seamCal <<<gridSize_1, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
+        seamCal <<<gridSize, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
         for (int stride = 2;stride < height;stride *= 2)
         {
-            dim3 gridSize_2((new_width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-            seamCal << <gridSize_2, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
+            seamCal << <gridSize, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
         }
 
         // Copy traceBack and Sums to host
@@ -517,7 +515,7 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         //printf("Seam Remove \n");
         seamRemove(inPixels, Seam, new_width, height, newPixels);
         
-        //seamRemoveKernel << <gridSize, blockSize >> > (d_inPixels, width, height, d_Seam, d_out);
+        //seamRemoveKernel <<<gridSize, blockSize >>> (d_inPixels, new_width, height, d_Seam, d_out);
         //Copy new pixels
         //CHECK(cudaMemcpy(newPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
         uchar3* temp = inPixels;
