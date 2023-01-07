@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdint.h>
 #include <malloc.h>
@@ -67,7 +68,7 @@ void readPnm(char* fileName, int& width, int& height, uchar3*& pixels)
     char type[3];
     fscanf(f, "%s", type);
 
-    if (strcmp(type, "P3") != 0) 
+    if (strcmp(type, "P3") != 0)
     {
         fclose(f);
         printf("Cannot read %s\n", fileName);
@@ -93,66 +94,66 @@ void readPnm(char* fileName, int& width, int& height, uchar3*& pixels)
     fclose(f);
 }
 
-void writePnm(uint8_t * pixels, int numChannels, int width, int height, 
-		char * fileName)
+void writePnm(uint8_t* pixels, int numChannels, int width, int height,
+    char* fileName)
 {
-	FILE * f = fopen(fileName, "w");
-	if (f == NULL)
-	{
-		printf("Cannot write %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}	
+    FILE* f = fopen(fileName, "w");
+    if (f == NULL)
+    {
+        printf("Cannot write %s\n", fileName);
+        exit(EXIT_FAILURE);
+    }
 
-	if (numChannels == 1)
-		fprintf(f, "P2\n");
-	else if (numChannels == 3)
-		fprintf(f, "P3\n");
-	else
-	{
-		fclose(f);
-		printf("Cannot write %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}
+    if (numChannels == 1)
+        fprintf(f, "P2\n");
+    else if (numChannels == 3)
+        fprintf(f, "P3\n");
+    else
+    {
+        fclose(f);
+        printf("Cannot write %s\n", fileName);
+        exit(EXIT_FAILURE);
+    }
 
-	fprintf(f, "%i\n%i\n255\n", width, height); 
+    fprintf(f, "%i\n%i\n255\n", width, height);
 
-	for (int i = 0; i < width * height * numChannels; i++)
-		fprintf(f, "%hhu\n", pixels[i]);
+    for (int i = 0; i < width * height * numChannels; i++)
+        fprintf(f, "%hhu\n", pixels[i]);
 
-	fclose(f);
+    fclose(f);
 }
 
-void writePnm(uchar3 * pixels, int width, int height, 
-		char * fileName)
+void writePnm(uchar3* pixels, int width, int height,
+    char* fileName)
 {
-	FILE * f = fopen(fileName, "w");
-	if (f == NULL)
-	{
-		printf("Cannot write %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}	
+    FILE* f = fopen(fileName, "w");
+    if (f == NULL)
+    {
+        printf("Cannot write %s\n", fileName);
+        exit(EXIT_FAILURE);
+    }
 
-	fprintf(f, "P3\n%i\n%i\n255\n", width, height); 
+    fprintf(f, "P3\n%i\n%i\n255\n", width, height);
 
-	for (int i = 0; i < width * height; i++)
-		fprintf(f, "%hhu\n%hhu\n%hhu\n", pixels[i].x, pixels[i].y, pixels[i].z);
-	
-	fclose(f);
+    for (int i = 0; i < width * height; i++)
+        fprintf(f, "%hhu\n%hhu\n%hhu\n", pixels[i].x, pixels[i].y, pixels[i].z);
+
+    fclose(f);
 }
 
-void writeImportantMatrix(char * fileName, uint8_t * matrix, int width, int height){
-    FILE * f = fopen(fileName, "w");
-	if (f == NULL)
-	{
-		printf("Cannot write %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}	
+void writeImportantMatrix(char* fileName, uint8_t* matrix, int width, int height) {
+    FILE* f = fopen(fileName, "w");
+    if (f == NULL)
+    {
+        printf("Cannot write %s\n", fileName);
+        exit(EXIT_FAILURE);
+    }
 
-	for(int i = 0; i < height; i++){
-        for(int j = 0; j < width; j++){
-            fprintf(f,"%hhu ",matrix[i * width + j]);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            fprintf(f, "%hhu ", matrix[i * width + j]);
         }
-        fprintf(f,"\n");
+        fprintf(f, "\n");
     }
     fclose(f);
 }
@@ -165,28 +166,28 @@ char* concatStr(const char* s1, const char* s2)
     return result;
 }
 
-__global__ void convertRgb2GrayKernel(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
+__global__ void convertRgb2GrayKernel(uchar3* inPixels, int width, int height, uint8_t* outPixels)
 {
-	// TODO
+    // TODO
     // Reminder: gray = 0.299*red + 0.587*green + 0.114*blue  
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     int r = blockDim.y * blockIdx.y + threadIdx.y;
-    if(r < height && c < width){
+    if (r < height && c < width) {
         int i = r * width + c;
         outPixels[i] = inPixels[i].x * 0.299 + inPixels[i].y * 0.585 + inPixels[i].z * 0.114;
     }
 }
 
-__global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
+__global__ void convolutionKernel(uint8_t* inPixels, int width, int height,
     int* filter_x_Sobel, int* filter_y_Sobel, int filterWidth,
-    int * outPixels){
+    int* outPixels) {
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     int r = blockDim.y * blockIdx.y + threadIdx.y;
-    if(r < height && c < width){
+    if (r < height && c < width) {
         // int i = r * width + c;
         uint8_t outPixel_x = 0;
         uint8_t outPixel_y = 0;
- 
+
         for (int filterR = 0; filterR < filterWidth; filterR++)
         {
             for (int filterC = 0; filterC < filterWidth; filterC++)
@@ -208,63 +209,63 @@ __global__ void convolutionKernel(uint8_t * inPixels, int width, int height,
     }
 }
 
-__global__ void calImportantMatKernel(int * inPixels, int width, int inHeight, int * traceBack, int * outPixels){
+__global__ void calImportantMatKernel(int* inPixels, int width, int inHeight, int* traceBack, int* outPixels) {
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     // int r = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if(c < width){
+    if (c < width) {
         int minIdx = (inHeight + 1) * width + c;
         int minValue = outPixels[minIdx];
 
-        if(c > 0){
-            if(minValue > outPixels[minIdx - 1]){
+        if (c > 0) {
+            if (minValue > outPixels[minIdx - 1]) {
                 minValue = outPixels[minIdx - 1];
                 minIdx -= 1;
             }
         }
 
-        if(c < width - 1){
-            if(minValue > outPixels[(inHeight + 1) * width + c + 1]){
+        if (c < width - 1) {
+            if (minValue > outPixels[(inHeight + 1) * width + c + 1]) {
                 minValue = outPixels[(inHeight + 1) * width + c + 1];
                 minIdx = (inHeight + 1) * width + c + 1;
             }
         }
-        
+
         outPixels[inHeight * width + c] = minValue + inPixels[inHeight * width + c];
         traceBack[inHeight * width + c] = minIdx;
     }
 }
 
-__global__ void seamRemoveKernel(uchar3 * inPixels, uint8_t * inGreyPixels, int width, int height, int * seam,
-     uchar3 * outPixels, uint8_t * outGreyPixels){
-    
+__global__ void seamRemoveKernel(uchar3* inPixels, uint8_t* inGreyPixels, int width, int height, int* seam,
+    uchar3* outPixels, uint8_t* outGreyPixels) {
+
     int c = blockDim.x * blockIdx.x + threadIdx.x;
     int r = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if(r < height && c < width){
+    if (r < height && c < width) {
         int inSeam = seam[r];
         int index = r * width + c;
-        if(index < inSeam){
+        if (index < inSeam) {
             outPixels[r * (width - 1) + c] = inPixels[index];
             outGreyPixels[r * (width - 1) + c] = inGreyPixels[index];
         }
-        else{
-            if(c < width - 1){
+        else {
+            if (c < width - 1) {
                 outPixels[r * (width - 1) + c] = inPixels[index + 1];
                 outGreyPixels[r * (width - 1) + c] = inGreyPixels[index + 1];
-            } 
+            }
         }
     }
 }
 
-void convertRGB2GreyByDevice(uchar3 * inPixels, int width, int height, uint8_t * outPixels, dim3 blockSize=dim3(1)){
-    uchar3 * d_inPixels;
-    uint8_t * d_outPixels;
+void convertRGB2GreyByDevice(uchar3* inPixels, int width, int height, uint8_t* outPixels, dim3 blockSize = dim3(1)) {
+    uchar3* d_inPixels;
+    uint8_t* d_outPixels;
 
     CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(uchar3)));
     CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(uint8_t)));
 
-    CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(uchar3),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inPixels, inPixels, height * width * sizeof(uchar3), cudaMemcpyHostToDevice));
 
     dim3 gridSize((width - 1) / blockSize.x + 1,
         (height - 1) / blockSize.y + 1);
@@ -272,35 +273,35 @@ void convertRGB2GreyByDevice(uchar3 * inPixels, int width, int height, uint8_t *
     // convert to grey scale
     GpuTimer timer;
     timer.Start();
-    convertRgb2GrayKernel<<<gridSize,blockSize>>>(d_inPixels,width,height,d_outPixels);
+    convertRgb2GrayKernel << <gridSize, blockSize >> > (d_inPixels, width, height, d_outPixels);
     cudaError_t errSync = cudaGetLastError();
     cudaError_t errAsync = cudaDeviceSynchronize();
-    if(errSync != cudaSuccess){
+    if (errSync != cudaSuccess) {
         printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
     }
-    if(errAsync != cudaSuccess){
+    if (errAsync != cudaSuccess) {
         printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
     }
     timer.Stop();
     float time = timer.Elapsed();
     // printf("Convert to grey scale processing time (use device): %f ms\n\n",time);
 
-    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(uint8_t),cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outPixels, d_outPixels, height * width * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_outPixels));
 }
 
-void convolutionByDevice(uint8_t * inPixels, int width, int height, int * outPixels, dim3 blockSize=dim3(1)){
+void convolutionByDevice(uint8_t* inPixels, int width, int height, int* outPixels, dim3 blockSize = dim3(1)) {
 
     // allocate device memory
-    uint8_t * d_inPixels;
-    int * d_outPixels;
+    uint8_t* d_inPixels;
+    int* d_outPixels;
 
     CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(uint8_t)));
     CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(int)));
 
-    CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(uint8_t),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inPixels, inPixels, height * width * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
     dim3 gridSize((width - 1) / blockSize.x + 1,
         (height - 1) / blockSize.y + 1);
@@ -319,31 +320,31 @@ void convolutionByDevice(uint8_t * inPixels, int width, int height, int * outPix
     //     }
     // }
 
-    int * d_filter_x_Sobel, * d_filter_y_Sobel;
-    CHECK(cudaMalloc(&d_filter_x_Sobel,filterWidth * filterWidth * sizeof(int)));
-    CHECK(cudaMalloc(&d_filter_y_Sobel,filterWidth * filterWidth * sizeof(int)));
+    int* d_filter_x_Sobel, * d_filter_y_Sobel;
+    CHECK(cudaMalloc(&d_filter_x_Sobel, filterWidth * filterWidth * sizeof(int)));
+    CHECK(cudaMalloc(&d_filter_y_Sobel, filterWidth * filterWidth * sizeof(int)));
 
-    CHECK(cudaMemcpy(d_filter_x_Sobel,filter_x_Sobel,filterWidth * filterWidth * sizeof(int),cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_filter_y_Sobel,filter_y_Sobel,filterWidth * filterWidth * sizeof(int),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_filter_x_Sobel, filter_x_Sobel, filterWidth * filterWidth * sizeof(int), cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_filter_y_Sobel, filter_y_Sobel, filterWidth * filterWidth * sizeof(int), cudaMemcpyHostToDevice));
 
     // convolution kernel
     GpuTimer timer;
     timer.Start();
-    convolutionKernel<<<gridSize,blockSize>>>(d_inPixels,width,height,d_filter_x_Sobel,d_filter_y_Sobel, filterWidth, d_outPixels);
+    convolutionKernel << <gridSize, blockSize >> > (d_inPixels, width, height, d_filter_x_Sobel, d_filter_y_Sobel, filterWidth, d_outPixels);
     cudaError_t errSync = cudaGetLastError();
     cudaError_t errAsync = cudaDeviceSynchronize();
-    if(errSync != cudaSuccess){
+    if (errSync != cudaSuccess) {
         printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
     }
-    if(errAsync != cudaSuccess){
+    if (errAsync != cudaSuccess) {
         printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
     }
-    
+
     timer.Stop();
     float time = timer.Elapsed();
     // printf("Convolution processing time (use device): %f ms\n\n",time);
 
-    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(int),cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outPixels, d_outPixels, height * width * sizeof(int), cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_outPixels));
@@ -351,18 +352,18 @@ void convolutionByDevice(uint8_t * inPixels, int width, int height, int * outPix
     CHECK(cudaFree(d_filter_y_Sobel));
 }
 
-void calImportantMatByDevice(int * inPixels, int width, int height, int * traceBack, int * outPixels,int blockSize=32){
-     // allocate device memory
-    int * d_inPixels, * d_outPixels;
-    int * d_traceBack;
+void calImportantMatByDevice(int* inPixels, int width, int height, int* traceBack, int* outPixels, int blockSize = 32) {
+    // allocate device memory
+    int* d_inPixels, * d_outPixels;
+    int* d_traceBack;
 
     CHECK(cudaMalloc(&d_inPixels, height * width * sizeof(int)));
     CHECK(cudaMalloc(&d_outPixels, height * width * sizeof(int)));
-    CHECK(cudaMalloc(&d_traceBack, (height-1) * width * sizeof(int)));
+    CHECK(cudaMalloc(&d_traceBack, (height - 1) * width * sizeof(int)));
 
-    CHECK(cudaMemcpy(d_inPixels,inPixels,height * width * sizeof(int),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inPixels, inPixels, height * width * sizeof(int), cudaMemcpyHostToDevice));
     // copy the last line of inPixels (host) to d_outPixels (device)
-    CHECK(cudaMemcpy(d_outPixels + (height - 1) * width, inPixels + (height - 1) * width,width * sizeof(int),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_outPixels + (height - 1) * width, inPixels + (height - 1) * width, width * sizeof(int), cudaMemcpyHostToDevice));
 
     int gridSize = (width - 1) / blockSize + 1;
 
@@ -370,68 +371,68 @@ void calImportantMatByDevice(int * inPixels, int width, int height, int * traceB
     GpuTimer timer;
     timer.Start();
 
-    for(int inHeight = height - 2; inHeight >= 0; inHeight--){
-        calImportantMatKernel<<<gridSize,blockSize>>>(d_inPixels,width,inHeight,d_traceBack,d_outPixels);
+    for (int inHeight = height - 2; inHeight >= 0; inHeight--) {
+        calImportantMatKernel << <gridSize, blockSize >> > (d_inPixels, width, inHeight, d_traceBack, d_outPixels);
         cudaError_t errSync = cudaGetLastError();
         cudaError_t errAsync = cudaDeviceSynchronize();
-        if(errSync != cudaSuccess){
+        if (errSync != cudaSuccess) {
             printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
         }
-        if(errAsync != cudaSuccess){
+        if (errAsync != cudaSuccess) {
             printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
         }
     }
     timer.Stop();
     float time = timer.Elapsed();
     // printf("Calculating cummulative matrix processing time (use device): %f ms\n\n",time);
-    
-    CHECK(cudaMemcpy(outPixels,d_outPixels,height * width * sizeof(int),cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(traceBack,d_traceBack, (height - 1)*width*sizeof(int), cudaMemcpyDeviceToHost));
+
+    CHECK(cudaMemcpy(outPixels, d_outPixels, height * width * sizeof(int), cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(traceBack, d_traceBack, (height - 1) * width * sizeof(int), cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_outPixels));
     CHECK(cudaFree(d_traceBack));
 }
 
-void findSeam(int * cumEnergy, int width, int height, int * traceBack, int * seam){
+void findSeam(int* cumEnergy, int width, int height, int* traceBack, int* seam) {
     int minValue = cumEnergy[0];
     int minIdx = 0;
 
-    for(int i = 1; i < width; i++){
-        if(minValue > cumEnergy[i]){
+    for (int i = 1; i < width; i++) {
+        if (minValue > cumEnergy[i]) {
             minIdx = i;
             minValue = cumEnergy[i];
         }
     }
 
     seam[0] = minValue;
-    for(int i = 1; i < height; i++){
+    for (int i = 1; i < height; i++) {
         seam[i] = traceBack[minIdx];
         minIdx = traceBack[minIdx];
     }
 }
 
-void visualizeSeam(uchar3 * inPixels, int width, int height, int * seam){
-    uchar3 * visInPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-    memcpy(visInPixels,inPixels,width * height * sizeof(uchar3));
+void visualizeSeam(uchar3* inPixels, int width, int height, int* seam) {
+    uchar3* visInPixels = (uchar3*)malloc(width * height * sizeof(uchar3));
+    memcpy(visInPixels, inPixels, width * height * sizeof(uchar3));
 
-    for(int r = 0; r < height; r++){
+    for (int r = 0; r < height; r++) {
         visInPixels[seam[r]].x = 255;
         visInPixels[seam[r]].y = 0;
         visInPixels[seam[r]].z = 0;
     }
 
     char fname[] = "visSeam.pnm";
-    writePnm(visInPixels,width,height,fname);
+    writePnm(visInPixels, width, height, fname);
     free(visInPixels);
 }
 
-void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, int height, uchar3 * outPixels, uint8_t * outGreyPixels,
-    int * seam, dim3 blockSize=dim3(1)){
+void removeSeamByDevice(uchar3* inPixels, uint8_t* inGreyPixels, int width, int height, uchar3* outPixels, uint8_t* outGreyPixels,
+    int* seam, dim3 blockSize = dim3(1)) {
 
-    uchar3 * d_inPixels, * d_outPixels;
-    uint8_t * d_inGreyPixels, * d_outGreyPixels;
-    int * d_seam;
+    uchar3* d_inPixels, * d_outPixels;
+    uint8_t* d_inGreyPixels, * d_outGreyPixels;
+    int* d_seam;
 
     CHECK(cudaMalloc(&d_inPixels, width * height * sizeof(uchar3)));
     CHECK(cudaMalloc(&d_outPixels, (width - 1) * height * sizeof(uchar3)));
@@ -439,9 +440,9 @@ void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, in
     CHECK(cudaMalloc(&d_outGreyPixels, (width - 1) * height * sizeof(uint8_t)));
     CHECK(cudaMalloc(&d_seam, height * sizeof(int)));
 
-    CHECK(cudaMemcpy(d_inPixels,inPixels, width * height * sizeof(uchar3), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_inGreyPixels,inGreyPixels, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_seam, seam,height * sizeof(int),cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inPixels, inPixels, width * height * sizeof(uchar3), cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_inGreyPixels, inGreyPixels, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_seam, seam, height * sizeof(int), cudaMemcpyHostToDevice));
 
     dim3 gridSize((width - 1) / blockSize.x + 1,
         (height - 1) / blockSize.y + 1);
@@ -450,13 +451,13 @@ void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, in
     GpuTimer timer;
     timer.Start();
 
-    seamRemoveKernel<<<gridSize,blockSize>>>(d_inPixels,d_inGreyPixels,width,height,d_seam,d_outPixels,d_outGreyPixels);
+    seamRemoveKernel << <gridSize, blockSize >> > (d_inPixels, d_inGreyPixels, width, height, d_seam, d_outPixels, d_outGreyPixels);
     cudaError_t errSync = cudaGetLastError();
     cudaError_t errAsync = cudaDeviceSynchronize();
-    if(errSync != cudaSuccess){
+    if (errSync != cudaSuccess) {
         printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
     }
-    if(errAsync != cudaSuccess){
+    if (errAsync != cudaSuccess) {
         printf("Async kernel error while removing seam: %s\n", cudaGetErrorString(errAsync));
     }
 
@@ -465,8 +466,8 @@ void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, in
     float time = timer.Elapsed();
     // printf("Remove seam processing time (use device): %f ms\n\n",time);
 
-    CHECK(cudaMemcpy(outPixels,d_outPixels,(width - 1)  * height * sizeof(uchar3),cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(outGreyPixels,d_outGreyPixels,(width - 1)*height*sizeof(uint8_t),cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outPixels, d_outPixels, (width - 1) * height * sizeof(uchar3), cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(outGreyPixels, d_outGreyPixels, (width - 1) * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_inGreyPixels));
@@ -476,34 +477,34 @@ void removeSeamByDevice(uchar3 * inPixels, uint8_t * inGreyPixels, int width, in
 }
 
 // uchar3 * outPixels remember to add this argument !!!
-void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove, dim3 blockSize=dim3(1)){
+void seamCarvingByDevice(uchar3* inPixels, int width, int height, int numRemove, dim3 blockSize = dim3(1)) {
 
-    uint8_t * inGreyPixels = (uint8_t*)malloc(height * width * sizeof(uint8_t));
-    int * outPixels = (int*)malloc(height * width * sizeof(int)); // energy pixel matrix
-    int * cummulativeEnergy2Bottom = (int *)malloc(height * width * sizeof(int));
-    int * traceBack = (int*)malloc((height - 1) * width * sizeof(int));
-    int * seam = (int *)malloc(height * sizeof(int));
+    uint8_t* inGreyPixels = (uint8_t*)malloc(height * width * sizeof(uint8_t));
+    int* outPixels = (int*)malloc(height * width * sizeof(int)); // energy pixel matrix
+    int* cummulativeEnergy2Bottom = (int*)malloc(height * width * sizeof(int));
+    int* traceBack = (int*)malloc((height - 1) * width * sizeof(int));
+    int* seam = (int*)malloc(height * sizeof(int));
 
-    uchar3 * newInPixels; //= (uchar3*)malloc((width - 1)*height * sizeof(uchar3));
-    uint8_t * newInGreyPixels; //= (uint8_t*)malloc((width - 1)*height * sizeof(uint8_t));
+    uchar3* newInPixels; //= (uchar3*)malloc((width - 1)*height * sizeof(uchar3));
+    uint8_t* newInGreyPixels; //= (uint8_t*)malloc((width - 1)*height * sizeof(uint8_t));
 
     // int originWidth = width;
-    uchar3 * temp;
-    uint8_t * temp1;
+    uchar3* temp;
+    uint8_t* temp1;
 
-    convertRGB2GreyByDevice(inPixels,width,height,inGreyPixels, blockSize);
+    convertRGB2GreyByDevice(inPixels, width, height, inGreyPixels, blockSize);
 
-    for(int i = 0; i < numRemove; i++){
-        convolutionByDevice(inGreyPixels,width,height,outPixels,blockSize);
-        calImportantMatByDevice(outPixels,width,height,traceBack,cummulativeEnergy2Bottom,blockSize.x);
-        findSeam(cummulativeEnergy2Bottom,width,height,traceBack,seam);
+    for (int i = 0; i < numRemove; i++) {
+        convolutionByDevice(inGreyPixels, width, height, outPixels, blockSize);
+        calImportantMatByDevice(outPixels, width, height, traceBack, cummulativeEnergy2Bottom, blockSize.x);
+        findSeam(cummulativeEnergy2Bottom, width, height, traceBack, seam);
 
         // visualizeSeam(inPixels,width,height,seam);
 
-        newInPixels = (uchar3*)malloc((width - 1)*height * sizeof(uchar3));
-        newInGreyPixels = (uint8_t*)malloc((width - 1)*height * sizeof(uint8_t));
-    
-        removeSeamByDevice(inPixels,inGreyPixels,width,height,newInPixels,newInGreyPixels,seam,blockSize);
+        newInPixels = (uchar3*)malloc((width - 1) * height * sizeof(uchar3));
+        newInGreyPixels = (uint8_t*)malloc((width - 1) * height * sizeof(uint8_t));
+
+        removeSeamByDevice(inPixels, inGreyPixels, width, height, newInPixels, newInGreyPixels, seam, blockSize);
 
         width -= 1;
 
@@ -520,15 +521,15 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove
         free(traceBack);
         traceBack = (int*)malloc((height - 1) * width * sizeof(int));
         free(cummulativeEnergy2Bottom);
-        cummulativeEnergy2Bottom = (int *)malloc(height * width * sizeof(int));
+        cummulativeEnergy2Bottom = (int*)malloc(height * width * sizeof(int));
         free(newInPixels);
         free(newInGreyPixels);
     }
-    
+
 
     char fname[] = "seams_removed.pnm";
 
-    writePnm(inPixels,width,height,fname);
+    writePnm(inPixels, width, height, fname);
 
 
     // char fname1[] = "grey_scale.pnm";
@@ -538,17 +539,16 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, int numRemove
     // writeImportantMatrix(fname2,outPixels,width,height);
     // writeImportantMatrix(fname3,cummulativeEnergy2Bottom,width,height);
 
-    free(inGreyPixels);
+    //free(inGreyPixels);
     free(outPixels);
     free(cummulativeEnergy2Bottom);
     free(traceBack);
     free(seam);
-    free(newInPixels);
-    free(newInGreyPixels);
 
+    printf("DONE \n");
 }
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
     // PRINT OUT DEVICE INFO
     if (argc != 3 && argc != 5)
@@ -560,20 +560,20 @@ int main(int argc, char ** argv)
     // printDeviceInfo();
 
     int width, height;
-    uchar3 * inPixels;
+    uchar3* inPixels;
     readPnm(argv[1], width, height, inPixels);
     printf("\nImage size (width x height): %i x %i\n", width, height);
 
     dim3 blockSize(32, 32); // Default
     if (argc == 5)
-	{
-		blockSize.x = atoi(argv[3]);
-		blockSize.y = atoi(argv[4]);
-	}
+    {
+        blockSize.x = atoi(argv[3]);
+        blockSize.y = atoi(argv[4]);
+    }
 
     int numRemove = 500;
     numRemove = atoi(argv[2]);
-    seamCarvingByDevice(inPixels,width,height,numRemove, blockSize);
+    seamCarvingByDevice(inPixels, width, height, numRemove, blockSize);
 
     free(inPixels);
 }

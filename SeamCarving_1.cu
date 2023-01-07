@@ -146,7 +146,7 @@ char* concatStr(const char* s1, const char* s2)
 }
 // Parallel functions
 
-__global__ void gray_kernel(uchar3* inPixels, int width, int height, uint8_t* outPixels)
+__global__ void gray_kernel(uchar3* inPixels, int width, int height, int* outPixels)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -157,7 +157,7 @@ __global__ void gray_kernel(uchar3* inPixels, int width, int height, uint8_t* ou
     outPixels[index] = 0.299f * inPixel.x + 0.587f * inPixel.y + 0.114f * inPixel.z;
 }
 
-__global__ void convolution_kernel(uint8_t* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, uint8_t* outPixels)
+__global__ void convolution_kernel(int* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -167,7 +167,8 @@ __global__ void convolution_kernel(uint8_t* inPixels, int width, int height, flo
     int distanceToKernelCol = (filterWidth - 3) / 2 + 1;
     int rowCount = -distanceToKernelCol;
     int columnCount = -distanceToKernelCol;
-    uint8_t result = 0;
+    int result_x = 0;
+    int result_y = 0;
     for (int filterIndex = 0; filterIndex < (filterWidth * filterWidth); filterIndex++)
     {
         int checkRow = row + rowCount;
@@ -180,8 +181,8 @@ __global__ void convolution_kernel(uint8_t* inPixels, int width, int height, flo
             checkColumn = 0;
         if (checkColumn >= width)
             checkColumn = width - 1;
-        result += abs(inPixels[checkRow * width + checkColumn] * filter_x_Sobel[filterIndex]);
-        result += abs(inPixels[checkRow * width + checkColumn] * filter_y_Sobel[filterIndex]);
+        result_x += inPixels[checkRow * width + checkColumn] * filter_x_Sobel[filterIndex];
+        result_y += inPixels[checkRow * width + checkColumn] * filter_y_Sobel[filterIndex];
         if ((filterIndex + 1) % filterWidth == 0)
         {
             rowCount += 1;
@@ -189,67 +190,70 @@ __global__ void convolution_kernel(uint8_t* inPixels, int width, int height, flo
         }
         else columnCount += 1;
     }
-    outPixels[index] = result;
+    outPixels[index] = abs(result_x)+abs(result_y);
 }
 
-void seamCarving_CUDA(uchar3* inPixels, int width, int height, uint8_t* outPixels, int numColRemove, dim3 blockSize = dim3(1,1))
+__global__ void convolution_kernel_1(int* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
-    GpuTimer timer;
-    // Filter
-    int   filterWidth       = 3;
-    float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
-    float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
+    int c = blockDim.x * blockIdx.x + threadIdx.x;
+    int r = blockDim.y * blockIdx.y + threadIdx.y;
+    if (r < height && c < width) {
+        // int i = r * width + c;
+        uint8_t outPixel_x = 0;
+        uint8_t outPixel_y = 0;
 
-    // Allocate device memories
-    uchar3 * d_in;
-    uint8_t* gray, *d_out;
-    float  * d_filter_x, *d_filter_y;
-    size_t pixelsSize = width       * height      * sizeof(uchar3);
-    size_t filterSize = filterWidth * filterWidth * sizeof(float);
-    size_t outputSize = width       * height      * sizeof(uint8_t);
-    CHECK(cudaMalloc(&d_in      , pixelsSize));
-    CHECK(cudaMalloc(&gray      , outputSize));
-    CHECK(cudaMalloc(&d_out     , outputSize));
-    CHECK(cudaMalloc(&d_filter_x, filterSize));
-    CHECK(cudaMalloc(&d_filter_y, filterSize));
-    //CHECK(cudaMalloc(&gray      , pixelsSize));
+        for (int filterR = 0; filterR < filterWidth; filterR++)
+        {
+            for (int filterC = 0; filterC < filterWidth; filterC++)
+            {
+                int filterVal_x = filter_x_Sobel[filterR * filterWidth + filterC];
+                int filterVal_y = filter_y_Sobel[filterR * filterWidth + filterC];
 
-    // Copy data to device memories
-    CHECK(cudaMemcpy(d_in      , inPixels       , pixelsSize, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_filter_x, filter_x_Sobel , filterSize, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_filter_y, filter_y_Sobel , filterSize, cudaMemcpyHostToDevice));
+                int inPixelsR = r - filterWidth / 2 + filterR;
+                int inPixelsC = c - filterWidth / 2 + filterC;
+                inPixelsR = min(max(0, inPixelsR), height - 1);
+                inPixelsC = min(max(0, inPixelsC), width - 1);
+                uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
 
-    // Call kernel
-    dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-    printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
+                outPixel_x += filterVal_x * inPixel;
+                outPixel_y += filterVal_y * inPixel;
+            }
+        }
+        outPixels[r * width + c] = abs(outPixel_x) + abs(outPixel_y);
+    }
+}
 
-    timer.Start();
+float computeError(uchar3* a1, uchar3* a2, int n)
+{
+    float err = 0;
+    for (int i = 0; i < n; i++)
+    {
+        err += abs((int)a1[i].x - (int)a2[i].x);
+        err += abs((int)a1[i].y - (int)a2[i].y);
+        err += abs((int)a1[i].z - (int)a2[i].z);
+    }
+    err /= (n * 3);
+    return err;
+}
 
-    gray_kernel        << <gridSize, blockSize >> > (d_in, width, height, gray);
-    convolution_kernel << <gridSize, blockSize >> > (gray, width, height, d_filter_x, d_filter_y, filterWidth, d_out);
+float computeError_1(int* a1, int* a2, int n)
+{
+    float err = 0;
+    for (int i = 0; i < n; i++)
+        err += abs((int)a1[i] - (int)a2[i]);
+    err /= n;
+    return err;
+}
 
-    timer.Stop();
-    float time = timer.Elapsed();
-    printf("Kernel time: %f ms\n", time);
-    cudaDeviceSynchronize();
-    CHECK(cudaGetLastError());
-
-    // Copy result from device memory
-    CHECK(cudaMemcpy(outPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
-
-    //Free device memory
-
-    CHECK(cudaFree(d_in));
-    CHECK(cudaFree(d_out));
-    CHECK(cudaFree(gray));
-    CHECK(cudaFree(d_filter_x));
-    CHECK(cudaFree(d_filter_y));
-
+void printError(int* deviceResult, int* hostResult, int width, int height)
+{
+    float err = computeError_1(deviceResult, hostResult, width * height);
+    printf("Error: %f\n", err);
 }
 
 
 // Sequence functions
-void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, uint8_t* outPixels)
+void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
     printf("    Convolution begin \n");
     for (int outPixelsR = 0; outPixelsR < height; outPixelsR++)
@@ -324,7 +328,7 @@ void seamRemove(uchar3* inPixels, int* Seam, int width, int height, uchar3* newI
     }
 }
 
-void seamCal(uint8_t* inPixels, int width, int height, int* traceBack,int* Sums)
+void seamCal(int* inPixels, int width, int height, int* traceBack,int* Sums)
 {
     if (inPixels == NULL)
         return;
@@ -383,7 +387,7 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
         float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
         float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
         // Gray filter and convolution ( calculate Importance matrix )
-        uint8_t* gray   = (uint8_t*)malloc(new_width * height * sizeof(uint8_t));
+        int* gray   = (int*)malloc(new_width * height * sizeof(int));
         convolution       (inPixels , new_width, height, filter_x_Sobel, filter_y_Sobel, filterWidth, gray);
         seamCal           (gray     , new_width, height,traceBack,Sums);
         seamTraceBack     (traceBack, Sums, Seam, new_width, height);
@@ -406,6 +410,66 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
     }
 }
 
+void seamCarving_CUDA(uchar3* inPixels, int width, int height, int* outPixels, int numColRemove, dim3 blockSize = dim3(1, 1))
+{
+    GpuTimer timer;
+    // Filter
+    int   filterWidth = 3;
+    float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
+    float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
+
+    // Allocate device memories
+    uchar3* d_in;
+    int* gray, * d_out;
+    float* d_filter_x, * d_filter_y;
+    size_t pixelsSize = width * height * sizeof(uchar3);
+    size_t filterSize = filterWidth * filterWidth * sizeof(float);
+    size_t outputSize = width * height * sizeof(int);
+    CHECK(cudaMalloc(&d_in, pixelsSize));
+    CHECK(cudaMalloc(&gray, outputSize));
+    CHECK(cudaMalloc(&d_out, outputSize));
+    CHECK(cudaMalloc(&d_filter_x, filterSize));
+    CHECK(cudaMalloc(&d_filter_y, filterSize));
+    //CHECK(cudaMalloc(&gray      , pixelsSize));
+
+    // Copy data to device memories
+    CHECK(cudaMemcpy(d_in, inPixels, pixelsSize, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_filter_x, filter_x_Sobel, filterSize, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_filter_y, filter_y_Sobel, filterSize, cudaMemcpyHostToDevice));
+
+    // Call kernel
+    dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
+    printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
+
+    timer.Start();
+
+    gray_kernel << <gridSize, blockSize >> > (d_in, width, height, gray);
+    convolution_kernel_1 << <gridSize, blockSize >> > (gray, width, height, d_filter_x, d_filter_y, filterWidth, d_out);
+
+    timer.Stop();
+    float time = timer.Elapsed();
+    printf("Kernel time: %f ms\n", time);
+    cudaDeviceSynchronize();
+    CHECK(cudaGetLastError());
+
+    // Copy result from device memory
+    CHECK(cudaMemcpy(outPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
+
+ 
+    int* True_Pixels = (int*)malloc(width * height * sizeof(int));
+    convolution(inPixels, width, height, filter_x_Sobel, filter_y_Sobel, filterWidth, True_Pixels);
+    printError(outPixels, True_Pixels, width,height);
+    free(True_Pixels);
+    //Free device memory
+
+    CHECK(cudaFree(d_in));
+    CHECK(cudaFree(d_out));
+    CHECK(cudaFree(gray));
+    CHECK(cudaFree(d_filter_x));
+    CHECK(cudaFree(d_filter_y));
+
+}
+
 void printDeviceInfo()
 {
     cudaDeviceProp devProv;
@@ -425,7 +489,7 @@ void printDeviceInfo()
 int main(int argc, char ** argv)
 {
     // PRINT OUT DEVICE INFO
-    if (argc != 3 && argc != 5)
+    if (argc != 4 && argc != 6)
     {
         printf("The number of arguments is invalid\n");
         return EXIT_FAILURE;
@@ -438,28 +502,28 @@ int main(int argc, char ** argv)
     uchar3* inPixels;
     readPnm(argv[1], width, height, inPixels);
     printf("\nImage size (width x height): %i x %i\n", width, height);
-    /*
-    // Calculation
+    dim3 blockSize(32, 32); // Default
+    if (argc == 5)
+    {
+        blockSize.x = atoi(argv[4]);
+        blockSize.y = atoi(argv[5]);
+    }
+
     uchar3* outPixels = NULL;
+    //uchar3* outPixels = (uchar3*)malloc(width * height * sizeof(uchar3));
     GpuTimer timer;
     timer.Start();
-    seamCarving(inPixels, width, height, outPixels, 1000);
+    int numRemove = 100;
+    numRemove = atoi(argv[3]);
+    seamCarving(inPixels, width, height, outPixels, numRemove);
     //uint8_t testSeam[15] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1}; // Only for test purpose
     timer.Stop();
     printf("Time: %.3f ms\n", timer.Elapsed());
     // Write results to files
     char* outFileNameBase = strtok(argv[2], "."); // Get rid of extension
-    //writePnm(correctOutPixels, 1, width, height, concatStr(outFileNameBase, "_host.pnm"));
     if(outPixels != NULL)
-        writePnm(outPixels, width-1000, height, concatStr(outFileNameBase, "_device.pnm"));
+        writePnm(outPixels, width- numRemove, height, concatStr(outFileNameBase, "_host.pnm"));
     printf("HMM \n");
-    */
-    dim3 blockSize(32, 32);
-    uint8_t* outPixels = (uint8_t*)malloc(width * height * sizeof(uint8_t));
-    seamCarving_CUDA(inPixels, width, height, outPixels, 0, blockSize);
-    char* outFileNameBase = strtok(argv[2], "."); // Get rid of extension
-    if (outPixels != NULL)
-        writePnm_gray(outPixels,1, width, height, concatStr(outFileNameBase, "_device.pnm"));
     // Free memories
     free(inPixels );
     free(outPixels);
