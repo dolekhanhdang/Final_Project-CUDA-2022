@@ -214,38 +214,32 @@ __global__ void gray_kernel(uchar3* inPixels, int width, int height, int* outPix
 
 __global__ void convolution_kernel(int* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row >= height) || (col >= width))
-        return;
-    int index = row * width + col;
-    int distanceToKernelCol = (filterWidth - 3) / 2 + 1;
-    int rowCount = -distanceToKernelCol;
-    int columnCount = -distanceToKernelCol;
-    int result_x = 0;
-    int result_y = 0;
-    for (int filterIndex = 0; filterIndex < (filterWidth * filterWidth); filterIndex++)
-    {
-        int checkRow = row + rowCount;
-        int checkColumn = col + columnCount;
-        if (checkRow < 0)
-            checkRow = 0;
-        if (checkRow >= height)
-            checkRow = height - 1;
-        if (checkColumn < 0)
-            checkColumn = 0;
-        if (checkColumn >= width)
-            checkColumn = width - 1;
-        result_x += inPixels[checkRow * width + checkColumn] * filter_x_Sobel[filterIndex];
-        result_y += inPixels[checkRow * width + checkColumn] * filter_y_Sobel[filterIndex];
-        if ((filterIndex + 1) % filterWidth == 0)
+    int c = blockDim.x * blockIdx.x + threadIdx.x;
+    int r = blockDim.y * blockIdx.y + threadIdx.y;
+    if (r < height && c < width) {
+        // int i = r * width + c;
+        uint8_t outPixel_x = 0;
+        uint8_t outPixel_y = 0;
+
+        for (int filterR = 0; filterR < filterWidth; filterR++)
         {
-            rowCount += 1;
-            columnCount = -distanceToKernelCol;
+            for (int filterC = 0; filterC < filterWidth; filterC++)
+            {
+                int filterVal_x = filter_x_Sobel[filterR * filterWidth + filterC];
+                int filterVal_y = filter_y_Sobel[filterR * filterWidth + filterC];
+
+                int inPixelsR = r - filterWidth / 2 + filterR;
+                int inPixelsC = c - filterWidth / 2 + filterC;
+                inPixelsR = min(max(0, inPixelsR), height - 1);
+                inPixelsC = min(max(0, inPixelsC), width - 1);
+                uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
+
+                outPixel_x += filterVal_x * inPixel;
+                outPixel_y += filterVal_y * inPixel;
+            }
         }
-        else columnCount += 1;
+        outPixels[r * width + c] = abs(outPixel_x) + abs(outPixel_y);
     }
-    outPixels[index] = abs(result_x) + abs(result_y);
 }
 
 __global__ void seamRemoveKernel(uchar3* inPixels, int width, int height, int* seam, uchar3* outPixels) {
@@ -314,7 +308,6 @@ void seamRemove(uchar3* inPixels, int* Seam, int width, int height, uchar3* newI
     }
 }
 
-
 __global__ void seamCal(int* inPixels,int* inReal, int width, int height, int* traceBack, int* Sums, int stride)
 {
     int col  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -334,31 +327,44 @@ __global__ void seamCal(int* inPixels,int* inReal, int width, int height, int* t
     }
     else if( new_row + stride < height)
     {
-        int inPixel = inPixels[index];
-        int minIndex = col;
-        int minValue = inPixel + inPixels[(new_row + stride) * width + minIndex];
-        if (col - 1 >= 0)
+        int inPixel      = inPixels[index];
+        int minIndex     = col;
+        int colTraceback = col;
+        int pointTraceBack = (new_row + (stride / 2 - 1)) * width;
+        if (stride > 1)
         {
-            int checkValue = inPixel + inPixels[(new_row + stride) * width + (col - 1)];
-            if (checkValue < minValue)
+            inPixel      = inReal[pointTraceBack + width  + traceBack[pointTraceBack + col]];
+            minIndex     = traceBack[pointTraceBack + col];
+            colTraceback = traceBack[pointTraceBack + col];
+        }
+        int minValueTraceBack  = inPixel         + inPixels[(new_row + stride) * width + minIndex];
+        int min_Final          = inPixels[index] + inPixels[(new_row + stride) * width + minIndex];
+        if (colTraceback - 1 >= 0)
+        {
+            int checkValue = inPixel + inPixels[(new_row + stride) * width + (colTraceback - 1)];
+            if (checkValue < minValueTraceBack)
             {
-                minIndex = col - 1;
-                minValue = checkValue;
+                minIndex          = colTraceback - 1;
+                min_Final         = inPixels[index] + inPixels[(new_row + stride) * width + (colTraceback - 1)];
+                minValueTraceBack = checkValue;
+                //printf("%d - %d -%d - %d\n", traceBack[pointTraceBack + col], inPixel, minValueTraceBack, checkValue);
             }
         }
-        if (col + 1 < width)
+        if (colTraceback + 1 < width)
         {
-            int checkValue = inPixel + inPixels[(new_row + stride) * width + (col + 1)];
-            if (checkValue < minValue)
+            int checkValue = inPixel + inPixels[(new_row + stride) * width + (colTraceback + 1)];
+            if (checkValue < minValueTraceBack)
             {
-                minIndex = col + 1;
-                minValue = checkValue;
+                //printf("%d - %d -%d - %d\n", traceBack[pointTraceBack + col], inPixel, minValueTraceBack, checkValue);
+                minIndex          = colTraceback + 1;
+                minValueTraceBack = checkValue;
+                min_Final         = inPixels[index] + inPixels[(new_row + stride) * width + (colTraceback + 1)];
             }
         }
         traceBack[(new_row+stride-1)*width+col] = minIndex;
-        Sums[new_row * width + col] = minValue;
+        Sums[new_row * width + col] = min_Final;
     }
-    if ( (stride * 2) >= (height))
+    if ( (stride * 2) >= (height*2))
     {
         if ((row == 0) & (height % 2 != 0))
         {
@@ -490,7 +496,6 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         seamCal <<<gridSize_1, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
         for (int stride = 2;stride < height;stride *= 2)
         {
-            printf("hmm \n");
             dim3 gridSize_2((new_width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
             seamCal << <gridSize_2, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
         }
@@ -507,15 +512,9 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         CHECK(cudaMemcpy(d_Seam, Seam, height * sizeof(int), cudaMemcpyHostToDevice));
         char fname3[] = "importantMat.txt";
         writeImportantMatrix(fname3, Sums, new_width, height);
-        /*
-        for (int j = 0;j < height;j++)
-        {
-            printf("s - %d \n", Seam[j]);
-        }
-        */
+        
         //Remove Seam
         printf("Seam Remove \n");
-        //visualizeSeam(inPixels, new_width+1, height, Seam);
         seamRemove(inPixels, Seam, new_width, height, newPixels);
         
         //seamRemoveKernel << <gridSize, blockSize >> > (d_inPixels, width, height, d_Seam, d_out);
@@ -557,9 +556,10 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
 void checkNewAlgo()
 {
     //Define varivable
-    int inPixels[5*6] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1,1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1 };
+    //int inPixels[5*4] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1, 6 , 3 , 2 , 5 , 4 };
+    int inPixels[5 * 4] = { 1,9,9,9,9,9,1,9,9,9,9,9,1,9,9,9,9,9,1,9};
     int width        = 5;
-    int height       = 6;
+    int height       = 4;
     int* d_inPixels, * d_Sums, * d_TraceBack;
     size_t pixelsSize = width * height * sizeof(int);
     int* Sums       = (int*)malloc(width * height * sizeof(int));
@@ -578,7 +578,7 @@ void checkNewAlgo()
     // Call kernel
     dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
     seamCal << <gridSize, blockSize >>> (d_inPixels, d_inPixels, width, height, d_TraceBack, d_Sums,1);
-    for (int stride = 2;stride <height;stride*=2)
+    for (int stride = 2;stride <height*2;stride*=2)
     {
         dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
         seamCal << <gridSize, blockSize >> > (d_Sums, d_inPixels, width, height, d_TraceBack, d_Sums, stride);
@@ -614,7 +614,7 @@ void checkNewAlgo()
 int main(int argc, char** argv)
 {
     // PRINT OUT DEVICE INFO
-    if (argc != 4 && argc != 6)
+    if (argc != 5 && argc != 7)
     {
         printf("The number of arguments is invalid\n");
         return EXIT_FAILURE;
@@ -628,28 +628,30 @@ int main(int argc, char** argv)
     printf("\nImage size (width x height): %i x %i\n", width, height);
 
     dim3 blockSize(32, 32); // Default
-    if (argc == 6)
+    if (argc == 7)
     {
-        blockSize.x = atoi(argv[4]);
-        blockSize.y = atoi(argv[5]);
+        blockSize.x = atoi(argv[5]);
+        blockSize.y = atoi(argv[6]);
     }
 
-    //int numRemove = 100;
-    //numRemove = atoi(argv[2]);
-    //seamCarvingByDevice(inPixels, width, height, numRemove, blockSize);
-
     //CHECK NEW FUNCTIONS
-    //checkNewAlgo();
+   //checkNewAlgo();
    
     uchar3* outPixels = NULL;
     int numRemove = 100;
     char* outFileNameBase = strtok(argv[2], "."); // Get rid of extension
     numRemove = atoi(argv[3]);
     seamCarving_CUDA(inPixels, width, height, outPixels, numRemove, blockSize);
+
+    uchar3* truePixels;
+    readPnm(argv[4], width, height, truePixels);
+    printf("\nImage size (width x height): %i x %i\n", width, height);
+    printError(outPixels, truePixels, width, height);
     if (outPixels != NULL)
         writePnm(outPixels, width - numRemove, height, concatStr(outFileNameBase, "_device.pnm"));
     printf("HMM \n");
   
     free(inPixels);
-    //free(outPixels);
+    free(outPixels);
+    free(truePixels);
 }
