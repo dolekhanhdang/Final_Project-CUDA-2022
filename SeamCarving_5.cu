@@ -141,6 +141,23 @@ void writePnm(uchar3* pixels, int width, int height,
 }
 
 
+void writeImportantMatrix(char* fileName, int* matrix, int width, int height) {
+    FILE* f = fopen(fileName, "w");
+    if (f == NULL)
+    {
+        printf("Cannot write %s\n", fileName);
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            fprintf(f, "%d ", matrix[i * width + j]);
+        }
+        fprintf(f, "\n");
+    }
+    fclose(f);
+}
+
 char* concatStr(const char* s1, const char* s2)
 {
     char* result = (char*)malloc(strlen(s1) + strlen(s2) + 1);
@@ -298,7 +315,7 @@ void seamRemove(uchar3* inPixels, int* Seam, int width, int height, uchar3* newI
 }
 
 
-__global__ void seamCal(int* inPixels, int width, int height, int* traceBack, int* Sums, int stride)
+__global__ void seamCal(int* inPixels,int* inReal, int width, int height, int* traceBack, int* Sums, int stride)
 {
     int col  = blockIdx.x * blockDim.x + threadIdx.x;
     int row  = blockIdx.y * blockDim.y + threadIdx.y;
@@ -306,6 +323,8 @@ __global__ void seamCal(int* inPixels, int width, int height, int* traceBack, in
     if ((row >= height) || (col >= width))
         return;
     int new_row = row * stride * 2;
+    if (height % 2 != 0)
+        new_row += 1;
     int index = new_row * width + col;
     
     if (new_row == (height - 1))
@@ -338,6 +357,35 @@ __global__ void seamCal(int* inPixels, int width, int height, int* traceBack, in
         }
         traceBack[(new_row+stride-1)*width+col] = minIndex;
         Sums[new_row * width + col] = minValue;
+    }
+    if ( (stride * 2) >= (height))
+    {
+        if ((row == 0) & (height % 2 != 0))
+        {
+            int inPixel = inReal[row * width + col];
+            int minIndex = col;
+            int minValue = inPixel + inPixels[(row + 1) * width + minIndex];
+            if (col - 1 >= 0)
+            {
+                int checkValue = inPixel + inPixels[(row + 1) * width + (col - 1)];
+                if (checkValue < minValue)
+                {
+                    minIndex = col - 1;
+                    minValue = checkValue;
+                }
+            }
+            if (col + 1 < width)
+            {
+                int checkValue = inPixel + inPixels[(row + 1) * width + (col + 1)];
+                if (checkValue < minValue)
+                {
+                    minIndex = col + 1;
+                    minValue = checkValue;
+                }
+            }
+            traceBack[row * width + col] = minIndex;
+            Sums[row * width + col] = minValue;
+        }
     }
     
 }
@@ -438,29 +486,33 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
 
         // SeamCal kennel
         printf("SeamCal \n");
-        dim3 gridSize_1((new_width - 1) /blockSize.x + 1, (height - 1) / (blockSize.y * 2) + 1);
-        seamCal <<<gridSize_1, blockSize >>> (convolution, new_width, height, d_TraceBack, d_Sums, 1);
+        dim3 gridSize_1((new_width - 1) /blockSize.x + 1, (height - 1) / blockSize.y + 1);
+        seamCal <<<gridSize_1, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
         for (int stride = 2;stride < height;stride *= 2)
         {
             printf("hmm \n");
-            dim3 gridSize_2((new_width - 1) / blockSize.x + 1, (height - 1) / (blockSize.y*2*stride) + 1);
-            seamCal << <gridSize_2, blockSize >> > (d_Sums, new_width, height, d_TraceBack, d_Sums, stride);
+            dim3 gridSize_2((new_width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
+            seamCal << <gridSize_2, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
         }
 
         // Copy traceBack and Sums to host
         printf("Copy Traceback \n");
-        CHECK(cudaMemcpy(Sums, d_Sums, pixelsSize, cudaMemcpyDeviceToHost));
-        CHECK(cudaMemcpy(TraceBack, d_TraceBack, pixelsSize, cudaMemcpyDeviceToHost));
+        CHECK(cudaMemcpy(Sums, d_Sums, SumSize, cudaMemcpyDeviceToHost));
+        CHECK(cudaMemcpy(TraceBack, d_TraceBack, SumSize, cudaMemcpyDeviceToHost));
 
 
         //Find seam
         printf("Seam Find \n");
         seamTraceBack(TraceBack, Sums, Seam, new_width, height);
         CHECK(cudaMemcpy(d_Seam, Seam, height * sizeof(int), cudaMemcpyHostToDevice));
+        char fname3[] = "importantMat.txt";
+        writeImportantMatrix(fname3, Sums, new_width, height);
+        /*
         for (int j = 0;j < height;j++)
         {
             printf("s - %d \n", Seam[j]);
         }
+        */
         //Remove Seam
         printf("Seam Remove \n");
         //visualizeSeam(inPixels, new_width+1, height, Seam);
@@ -505,9 +557,9 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
 void checkNewAlgo()
 {
     //Define varivable
-    int inPixels[20] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1 };
+    int inPixels[5*6] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1,1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1 };
     int width        = 5;
-    int height       = 4;
+    int height       = 6;
     int* d_inPixels, * d_Sums, * d_TraceBack;
     size_t pixelsSize = width * height * sizeof(int);
     int* Sums       = (int*)malloc(width * height * sizeof(int));
@@ -520,16 +572,16 @@ void checkNewAlgo()
     //Copy from host to device
     CHECK(cudaMemcpy(d_inPixels, inPixels, pixelsSize, cudaMemcpyHostToDevice));
 
-    dim3 blockSize(32, 32);
+    dim3 blockSize(2, 2);
     GpuTimer timer;
     timer.Start();
     // Call kernel
     dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-    seamCal << <gridSize, blockSize >>> (d_inPixels, width, height, d_TraceBack, d_Sums,1);
+    seamCal << <gridSize, blockSize >>> (d_inPixels, d_inPixels, width, height, d_TraceBack, d_Sums,1);
     for (int stride = 2;stride <height;stride*=2)
     {
         dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-        seamCal << <gridSize, blockSize >> > (d_Sums, width, height, d_TraceBack, d_Sums, stride);
+        seamCal << <gridSize, blockSize >> > (d_Sums, d_inPixels, width, height, d_TraceBack, d_Sums, stride);
     }
  
     timer.Stop();
@@ -588,6 +640,7 @@ int main(int argc, char** argv)
 
     //CHECK NEW FUNCTIONS
     //checkNewAlgo();
+   
     uchar3* outPixels = NULL;
     int numRemove = 100;
     char* outFileNameBase = strtok(argv[2], "."); // Get rid of extension
@@ -596,6 +649,7 @@ int main(int argc, char** argv)
     if (outPixels != NULL)
         writePnm(outPixels, width - numRemove, height, concatStr(outFileNameBase, "_device.pnm"));
     printf("HMM \n");
+  
     free(inPixels);
-    free(outPixels);
+    //free(outPixels);
 }
