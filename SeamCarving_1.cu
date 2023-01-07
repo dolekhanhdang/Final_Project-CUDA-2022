@@ -255,7 +255,7 @@ void printError(int* deviceResult, int* hostResult, int width, int height)
 // Sequence functions
 void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
 {
-    printf("    Convolution begin \n");
+    //printf("    Convolution begin \n");
     for (int outPixelsR = 0; outPixelsR < height; outPixelsR++)
     {
         for (int outPixelsC = 0; outPixelsC < width; outPixelsC++)
@@ -298,7 +298,7 @@ void seamTraceBack(int* traceBack, int* Sums, int* Seam, int width, int height)
             indexMin = i;
         }
     }
-    printf("    indexMin = %d - min = %d \n", indexMin, Min);
+    //printf("    indexMin = %d - min = %d \n", indexMin, Min);
     Seam[0] = indexMin;
     for (int i = 1;i < height;i++)
     {
@@ -375,7 +375,7 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
 {
     for (int i = 1;i <= numColRemove; i++)
     {
-        printf("Seam = %d \n", i);
+        //printf("Seam = %d \n", i);
         //Define varivable
         int  new_width     = width - i + 1;
         int* traceBack    = (int*)   malloc(new_width * height * sizeof(int));
@@ -510,20 +510,22 @@ int main(int argc, char ** argv)
     }
 
     uchar3* outPixels = NULL;
-    //uchar3* outPixels = (uchar3*)malloc(width * height * sizeof(uchar3));
     GpuTimer timer;
     timer.Start();
     int numRemove = 100;
     numRemove = atoi(argv[3]);
     seamCarving(inPixels, width, height, outPixels, numRemove);
+
     //uint8_t testSeam[15] = { 1, 4, 3, 5, 2, 3, 2, 5, 2, 3, 5, 3, 4, 2, 1}; // Only for test purpose
     timer.Stop();
     printf("Time: %.3f ms\n", timer.Elapsed());
+
     // Write results to files
     char* outFileNameBase = strtok(argv[2], "."); // Get rid of extension
     if(outPixels != NULL)
         writePnm(outPixels, width- numRemove, height, concatStr(outFileNameBase, "_host.pnm"));
     printf("HMM \n");
+
     // Free memories
     free(inPixels );
     free(outPixels);
