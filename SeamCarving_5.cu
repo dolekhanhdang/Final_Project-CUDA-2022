@@ -218,8 +218,8 @@ __global__ void convolution_kernel(int* inPixels, int width, int height, float* 
     int r = blockDim.y * blockIdx.y + threadIdx.y;
     if (r < height && c < width) {
         // int i = r * width + c;
-        uint8_t outPixel_x = 0;
-        uint8_t outPixel_y = 0;
+        int outPixel_x = 0;
+        int outPixel_y = 0;
 
         for (int filterR = 0; filterR < filterWidth; filterR++)
         {
@@ -232,7 +232,7 @@ __global__ void convolution_kernel(int* inPixels, int width, int height, float* 
                 int inPixelsC = c - filterWidth / 2 + filterC;
                 inPixelsR = min(max(0, inPixelsR), height - 1);
                 inPixelsC = min(max(0, inPixelsC), width - 1);
-                uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
+                int inPixel = inPixels[inPixelsR * width + inPixelsC];
 
                 outPixel_x += filterVal_x * inPixel;
                 outPixel_y += filterVal_y * inPixel;
