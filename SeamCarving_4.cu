@@ -573,7 +573,10 @@ int main(int argc, char** argv)
 
     int numRemove = 500;
     numRemove = atoi(argv[2]);
+    GpuTimer timer;
+    timer.Start();
     seamCarvingByDevice(inPixels, width, height, numRemove, blockSize);
-
+    timer.Stop();
+    printf("Time: %.3f ms\n", timer.Elapsed());
     free(inPixels);
 }

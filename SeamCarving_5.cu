@@ -278,7 +278,7 @@ void seamTraceBack(int* traceBack, int* Sums, int* Seam, int width, int height)
             indexMin = i;
         }
     }
-    printf("    indexMin = %d - min = %d \n", indexMin, Min);
+    //printf("    indexMin = %d - min = %d \n", indexMin, Min);
     Seam[0] = indexMin;
     for (int i = 1;i < height;i++)
     {
@@ -451,7 +451,7 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
     timer.Start();
     for (int i = 1;i <= numColRemove;i++)
     {
-        printf("Seam ---- %d \n", i);
+        //printf("Seam ---- %d \n", i);
         //Define Size
         int  new_width = width - i + 1;
         size_t pixelsSize = new_width * height * sizeof(uchar3);
@@ -480,18 +480,18 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
 
         // Call kernel
         dim3 gridSize((new_width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-        printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
+        //printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
 
         // Gray kernel
-        printf("Gray \n");
+        //printf("Gray \n");
         gray_kernel << <gridSize, blockSize >> > (d_inPixels, new_width, height, gray);
 
         // Convolution kernel
-        printf("Convolution \n");
+        //printf("Convolution \n");
         convolution_kernel << <gridSize, blockSize >> > (gray, new_width, height, d_filter_x, d_filter_y, filterWidth, convolution);
 
         // SeamCal kennel
-        printf("SeamCal \n");
+        //printf("SeamCal \n");
         dim3 gridSize_1((new_width - 1) /blockSize.x + 1, (height - 1) / blockSize.y + 1);
         seamCal <<<gridSize_1, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
         for (int stride = 2;stride < height;stride *= 2)
@@ -501,20 +501,20 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         }
 
         // Copy traceBack and Sums to host
-        printf("Copy Traceback \n");
+        //printf("Copy Traceback \n");
         CHECK(cudaMemcpy(Sums, d_Sums, SumSize, cudaMemcpyDeviceToHost));
         CHECK(cudaMemcpy(TraceBack, d_TraceBack, SumSize, cudaMemcpyDeviceToHost));
 
 
         //Find seam
-        printf("Seam Find \n");
+        //printf("Seam Find \n");
         seamTraceBack(TraceBack, Sums, Seam, new_width, height);
         CHECK(cudaMemcpy(d_Seam, Seam, height * sizeof(int), cudaMemcpyHostToDevice));
-        char fname3[] = "importantMat.txt";
-        writeImportantMatrix(fname3, Sums, new_width, height);
+        //char fname3[] = "importantMat.txt";
+        //writeImportantMatrix(fname3, Sums, new_width, height);
         
         //Remove Seam
-        printf("Seam Remove \n");
+        //printf("Seam Remove \n");
         seamRemove(inPixels, Seam, new_width, height, newPixels);
         
         //seamRemoveKernel << <gridSize, blockSize >> > (d_inPixels, width, height, d_Seam, d_out);
@@ -614,7 +614,7 @@ void checkNewAlgo()
 int main(int argc, char** argv)
 {
     // PRINT OUT DEVICE INFO
-    if (argc != 5 && argc != 7)
+    if (argc != 4 && argc != 6)
     {
         printf("The number of arguments is invalid\n");
         return EXIT_FAILURE;
@@ -628,10 +628,10 @@ int main(int argc, char** argv)
     printf("\nImage size (width x height): %i x %i\n", width, height);
 
     dim3 blockSize(32, 32); // Default
-    if (argc == 7)
+    if (argc == 6)
     {
-        blockSize.x = atoi(argv[5]);
-        blockSize.y = atoi(argv[6]);
+        blockSize.x = atoi(argv[4]);
+        blockSize.y = atoi(argv[5]);
     }
 
     //CHECK NEW FUNCTIONS
@@ -643,15 +643,15 @@ int main(int argc, char** argv)
     numRemove = atoi(argv[3]);
     seamCarving_CUDA(inPixels, width, height, outPixels, numRemove, blockSize);
 
-    uchar3* truePixels;
-    readPnm(argv[4], width, height, truePixels);
-    printf("\nImage size (width x height): %i x %i\n", width, height);
-    printError(outPixels, truePixels, width, height);
+    //uchar3* truePixels;
+    //readPnm(argv[4], width, height, truePixels);
+    //printf("\nImage size (width x height): %i x %i\n", width, height);
+    //printError(outPixels, truePixels, width, height);
     if (outPixels != NULL)
         writePnm(outPixels, width - numRemove, height, concatStr(outFileNameBase, "_device.pnm"));
     printf("HMM \n");
   
     free(inPixels);
     free(outPixels);
-    free(truePixels);
+
 }

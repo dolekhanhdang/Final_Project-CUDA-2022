@@ -144,84 +144,6 @@ char* concatStr(const char* s1, const char* s2)
     strcat(result, s2);
     return result;
 }
-// Parallel functions
-
-__global__ void gray_kernel(uchar3* inPixels, int width, int height, int* outPixels)
-{
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row >= height) || (col >= width))
-        return;
-    int index = row * width + col;
-    uchar3 inPixel = inPixels[index];
-    outPixels[index] = 0.299f * inPixel.x + 0.587f * inPixel.y + 0.114f * inPixel.z;
-}
-
-__global__ void convolution_kernel(int* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
-{
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row >= height) || (col >= width))
-        return;
-    int index = row * width + col;
-    int distanceToKernelCol = (filterWidth - 3) / 2 + 1;
-    int rowCount = -distanceToKernelCol;
-    int columnCount = -distanceToKernelCol;
-    int result_x = 0;
-    int result_y = 0;
-    for (int filterIndex = 0; filterIndex < (filterWidth * filterWidth); filterIndex++)
-    {
-        int checkRow = row + rowCount;
-        int checkColumn = col + columnCount;
-        if (checkRow < 0)
-            checkRow = 0;
-        if (checkRow >= height)
-            checkRow = height - 1;
-        if (checkColumn < 0)
-            checkColumn = 0;
-        if (checkColumn >= width)
-            checkColumn = width - 1;
-        result_x += inPixels[checkRow * width + checkColumn] * filter_x_Sobel[filterIndex];
-        result_y += inPixels[checkRow * width + checkColumn] * filter_y_Sobel[filterIndex];
-        if ((filterIndex + 1) % filterWidth == 0)
-        {
-            rowCount += 1;
-            columnCount = -distanceToKernelCol;
-        }
-        else columnCount += 1;
-    }
-    outPixels[index] = abs(result_x)+abs(result_y);
-}
-
-__global__ void convolution_kernel_1(int* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
-{
-    int c = blockDim.x * blockIdx.x + threadIdx.x;
-    int r = blockDim.y * blockIdx.y + threadIdx.y;
-    if (r < height && c < width) {
-        // int i = r * width + c;
-        uint8_t outPixel_x = 0;
-        uint8_t outPixel_y = 0;
-
-        for (int filterR = 0; filterR < filterWidth; filterR++)
-        {
-            for (int filterC = 0; filterC < filterWidth; filterC++)
-            {
-                int filterVal_x = filter_x_Sobel[filterR * filterWidth + filterC];
-                int filterVal_y = filter_y_Sobel[filterR * filterWidth + filterC];
-
-                int inPixelsR = r - filterWidth / 2 + filterR;
-                int inPixelsC = c - filterWidth / 2 + filterC;
-                inPixelsR = min(max(0, inPixelsR), height - 1);
-                inPixelsC = min(max(0, inPixelsC), width - 1);
-                uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
-
-                outPixel_x += filterVal_x * inPixel;
-                outPixel_y += filterVal_y * inPixel;
-            }
-        }
-        outPixels[r * width + c] = abs(outPixel_x) + abs(outPixel_y);
-    }
-}
 
 float computeError(uchar3* a1, uchar3* a2, int n)
 {
@@ -253,7 +175,7 @@ void printError(int* deviceResult, int* hostResult, int width, int height)
 
 
 // Sequence functions
-void convolution(uchar3* inPixels, int width, int height, float* filter_x_Sobel, float* filter_y_Sobel, int filterWidth, int* outPixels)
+void convolution(uchar3* inPixels, int width, int height, int* filter_x_Sobel, int* filter_y_Sobel, int filterWidth, int* outPixels)
 {
     //printf("    Convolution begin \n");
     for (int outPixelsR = 0; outPixelsR < height; outPixelsR++)
@@ -384,8 +306,8 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
         uchar3* newPixels = (uchar3*)malloc((new_width -1) * height * sizeof(uchar3));
         // Define filter
         int filterWidth = 3;
-        float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
-        float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
+        int filter_x_Sobel[] = { 1 , 0 , -1, 2 , 0 , -2,  1 ,  0 , -1 };
+        int filter_y_Sobel[] = { 1 , 2 , 1 , 0 , 0 , 0 , -1 , -2 , -1 };
         // Gray filter and convolution ( calculate Importance matrix )
         int* gray   = (int*)malloc(new_width * height * sizeof(int));
         convolution       (inPixels , new_width, height, filter_x_Sobel, filter_y_Sobel, filterWidth, gray);
@@ -410,65 +332,6 @@ void seamCarving(uchar3* inPixels, int width, int height, uchar3*& outPixels, in
     }
 }
 
-void seamCarving_CUDA(uchar3* inPixels, int width, int height, int* outPixels, int numColRemove, dim3 blockSize = dim3(1, 1))
-{
-    GpuTimer timer;
-    // Filter
-    int   filterWidth = 3;
-    float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
-    float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
-
-    // Allocate device memories
-    uchar3* d_in;
-    int* gray, * d_out;
-    float* d_filter_x, * d_filter_y;
-    size_t pixelsSize = width * height * sizeof(uchar3);
-    size_t filterSize = filterWidth * filterWidth * sizeof(float);
-    size_t outputSize = width * height * sizeof(int);
-    CHECK(cudaMalloc(&d_in, pixelsSize));
-    CHECK(cudaMalloc(&gray, outputSize));
-    CHECK(cudaMalloc(&d_out, outputSize));
-    CHECK(cudaMalloc(&d_filter_x, filterSize));
-    CHECK(cudaMalloc(&d_filter_y, filterSize));
-    //CHECK(cudaMalloc(&gray      , pixelsSize));
-
-    // Copy data to device memories
-    CHECK(cudaMemcpy(d_in, inPixels, pixelsSize, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_filter_x, filter_x_Sobel, filterSize, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(d_filter_y, filter_y_Sobel, filterSize, cudaMemcpyHostToDevice));
-
-    // Call kernel
-    dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-    printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
-
-    timer.Start();
-
-    gray_kernel << <gridSize, blockSize >> > (d_in, width, height, gray);
-    convolution_kernel_1 << <gridSize, blockSize >> > (gray, width, height, d_filter_x, d_filter_y, filterWidth, d_out);
-
-    timer.Stop();
-    float time = timer.Elapsed();
-    printf("Kernel time: %f ms\n", time);
-    cudaDeviceSynchronize();
-    CHECK(cudaGetLastError());
-
-    // Copy result from device memory
-    CHECK(cudaMemcpy(outPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
-
- 
-    int* True_Pixels = (int*)malloc(width * height * sizeof(int));
-    convolution(inPixels, width, height, filter_x_Sobel, filter_y_Sobel, filterWidth, True_Pixels);
-    printError(outPixels, True_Pixels, width,height);
-    free(True_Pixels);
-    //Free device memory
-
-    CHECK(cudaFree(d_in));
-    CHECK(cudaFree(d_out));
-    CHECK(cudaFree(gray));
-    CHECK(cudaFree(d_filter_x));
-    CHECK(cudaFree(d_filter_y));
-
-}
 
 void printDeviceInfo()
 {
@@ -496,19 +359,18 @@ int main(int argc, char ** argv)
     }
 
     printDeviceInfo();
-
+    dim3 blockSize(32, 32);
     // Read input image file
     int width, height;
     uchar3* inPixels;
     readPnm(argv[1], width, height, inPixels);
     printf("\nImage size (width x height): %i x %i\n", width, height);
-    dim3 blockSize(32, 32); // Default
     if (argc == 5)
     {
         blockSize.x = atoi(argv[4]);
         blockSize.y = atoi(argv[5]);
     }
-
+    
     uchar3* outPixels = NULL;
     GpuTimer timer;
     timer.Start();
