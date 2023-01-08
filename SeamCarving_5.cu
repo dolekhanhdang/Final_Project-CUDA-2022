@@ -250,13 +250,13 @@ __global__ void seamRemoveKernel(uchar3* inPixels, int width, int height, int* s
     if (r < height && c < width) {
         int inSeam = seam[r];
         int index = r * width + c;
-        if (index < inSeam) {
+        if (c == inSeam)
+            return;
+        if (c < inSeam) {
             outPixels[r * (width - 1) + c] = inPixels[index];
         }
         else {
-            if (c < width - 1) {
-                outPixels[r * (width - 1) + c] = inPixels[index + 1];
-            }
+                outPixels[r * (width - 1) + c - 1] = inPixels[index];
         }
     }
 }
@@ -364,7 +364,7 @@ __global__ void seamCal(int* inPixels,int* inReal, int width, int height, int* t
         traceBack[(new_row+stride-1)*width+col] = minIndex;
         Sums[new_row * width + col] = min_Final;
     }
-    if ( (stride * 2) >= (height*2))
+    if ( (stride * 2) >= (height))
     {
         if ((row == 0) & (height % 2 != 0))
         {
@@ -430,8 +430,8 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
     GpuTimer timer;
     // Filter
     int   filterWidth = 3;
-    float filter_x_Sobel[9] = { 1 , 0 , −1, 2 , 0 , −2,  1 ,  0 , −1 };
-    float filter_y_Sobel[9] = { 1 , 2 , 1 , 0 , 0 , 0 , −1 , −2 , −1 };
+    float filter_x_Sobel[] = { 1 , 0 , -1, 2 , 0 , -2,  1 ,  0 , -1 };
+    float filter_y_Sobel[] = { 1 , 2 , 1 , 0 , 0 , 0 , -1 , -2 , -1 };
 
     
     // Define varivable
@@ -464,8 +464,8 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         uchar3* newPixels = (uchar3*)malloc((new_width - 1) * height * sizeof(uchar3));
         // Allocate device memories
         CHECK(cudaMalloc(&d_inPixels, pixelsSize));
-        CHECK(cudaMalloc(&gray, pixelsSize));
-        CHECK(cudaMalloc(&convolution, pixelsSize));
+        CHECK(cudaMalloc(&gray, SumSize));
+        CHECK(cudaMalloc(&convolution, SumSize));
         CHECK(cudaMalloc(&d_Seam, height * sizeof(int)));
 
         CHECK(cudaMalloc(&d_out, outputSize));
@@ -479,28 +479,40 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         
 
         // Call kernel
-        dim3 gridSize((new_width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
+        dim3 gridSize((new_width-1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
         //printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
 
         // Gray kernel
         //printf("Gray \n");
         gray_kernel << <gridSize, blockSize >> > (d_inPixels, new_width, height, gray);
-
+        cudaError_t errSync = cudaGetLastError();
+        cudaError_t errAsync = cudaDeviceSynchronize();
         // Convolution kernel
         //printf("Convolution \n");
         convolution_kernel << <gridSize, blockSize >> > (gray, new_width, height, d_filter_x, d_filter_y, filterWidth, convolution);
-
+        
         // SeamCal kennel
         //printf("SeamCal \n");
         seamCal <<<gridSize, blockSize >>> (convolution,convolution, new_width, height, d_TraceBack, d_Sums, 1);
-        for (int stride = 2;stride < height;stride *= 2)
+        for (int stride = 2;stride <height;stride *= 2)
         {
-            seamCal << <gridSize, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
+            dim3 gridSize_1((new_width - 1) / blockSize.x + 1, (height - 1) / (blockSize.y * stride) + 1);
+            seamCal << <gridSize_1, blockSize >> > (d_Sums, convolution, new_width, height, d_TraceBack, d_Sums, stride);
         }
-
+        /*
+        errSync = cudaGetLastError();
+        errAsync = cudaDeviceSynchronize();
+        if (errSync != cudaSuccess) {
+            printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
+        }
+        if (errAsync != cudaSuccess) {
+            printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
+        }
+        */
+        timer.Stop();
         // Copy traceBack and Sums to host
         //printf("Copy Traceback \n");
-        CHECK(cudaMemcpy(Sums, d_Sums, SumSize, cudaMemcpyDeviceToHost));
+        CHECK(cudaMemcpy(Sums,      d_Sums     , SumSize, cudaMemcpyDeviceToHost));
         CHECK(cudaMemcpy(TraceBack, d_TraceBack, SumSize, cudaMemcpyDeviceToHost));
 
 
@@ -513,11 +525,11 @@ void seamCarving_CUDA(uchar3* inPixels, int width, int height, uchar3*& outPixel
         
         //Remove Seam
         //printf("Seam Remove \n");
-        seamRemove(inPixels, Seam, new_width, height, newPixels);
+        //seamRemove(inPixels, Seam, new_width, height, newPixels);
         
-        //seamRemoveKernel <<<gridSize, blockSize >>> (d_inPixels, new_width, height, d_Seam, d_out);
+        seamRemoveKernel <<<gridSize, blockSize >>> (d_inPixels, new_width, height, d_Seam, d_out);
         //Copy new pixels
-        //CHECK(cudaMemcpy(newPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
+        CHECK(cudaMemcpy(newPixels, d_out, outputSize, cudaMemcpyDeviceToHost));
         uchar3* temp = inPixels;
         inPixels = newPixels;
         newPixels = temp;
