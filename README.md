@@ -12,3 +12,5 @@ Thông tin về các file
 | --- | --- |
 | SeamCarving_1.cu | code tuần tự thuật toán seam carving |
 | SeamCarving_3.cu | code song song thuật toán seam carving |
+| SeamCarving_6.cu | cải tiến 1 |
+| SeamCarving_5.cu | cải tiến 2 |
